@@ -33,6 +33,23 @@ export SPOTIFY_CLIENT_SECRET=your_client_secret
 
 Without these, the dashboard is generated without album preview URLs.
 
+### Last.fm API incremental accuracy (recommended)
+
+Create a Last.fm API key at [Last.fm API account](https://www.last.fm/api/account/create) and set:
+
+```bash
+export LASTFM_API_KEY=your_lastfm_api_key
+```
+
+Then run incremental sync before generating the dashboard:
+
+```bash
+python sync_lastfm_api.py --user TOOUUR
+python build_lastfm_dashboard.py --user TOOUUR --api-aggregates raw_snapshot/api_aggregates.json
+```
+
+This keeps a persistent scrobble cache in `raw_snapshot/api_scrobbles_cache.json` and updates only the delta on each run.
+
 ## Usage
 
 ### Generate from live Last.fm pages

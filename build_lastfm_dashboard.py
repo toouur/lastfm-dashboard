@@ -805,6 +805,114 @@ def build_data(username: str, pages: dict[str, str]) -> dict[str, Any]:
 
 # ── Rendering ─────────────────────────────────────────────────────────────────
 
+def _norm_key(*parts: str) -> str:
+    normalized = [re.sub(r"\s+", " ", (p or "").strip()).lower() for p in parts]
+    return "|".join(normalized)
+
+
+def _safe_int(value: Any, default: int = 0) -> int:
+    return value if isinstance(value, int) else parse_int(str(value), default)
+
+
+def _apply_seed_fields(target: dict[str, Any], seed: dict[str, Any], fields: tuple[str, ...]) -> None:
+    for field in fields:
+        if not target.get(field) and seed.get(field):
+            target[field] = seed[field]
+
+
+def merge_api_aggregates(
+    data: dict[str, Any],
+    api_data: dict[str, Any],
+    top_limit: int = 20,
+    recent_limit: int = 40,
+) -> None:
+    if not isinstance(api_data, dict):
+        return
+
+    profile = data.setdefault("profile", {})
+    api_profile = api_data.get("profile") if isinstance(api_data.get("profile"), dict) else {}
+    total_scrobbles = _safe_int(api_profile.get("total_scrobbles"), 0)
+    total_artists = _safe_int(api_profile.get("total_artists"), 0)
+    if total_scrobbles > 0:
+        profile["total_scrobbles"] = total_scrobbles
+    if total_artists > 0:
+        profile["total_artists"] = total_artists
+
+    weekly_report = api_data.get("weekly_report") if isinstance(api_data.get("weekly_report"), dict) else {}
+    if weekly_report:
+        target_weekly = data.setdefault("weekly_report", {})
+        if "scrobbles_this_week" in weekly_report:
+            target_weekly["scrobbles_this_week"] = _safe_int(weekly_report.get("scrobbles_this_week"), 0)
+        if isinstance(weekly_report.get("listening_clock"), list):
+            target_weekly["listening_clock"] = weekly_report["listening_clock"]
+
+    seeded_tracks = {
+        _norm_key(str(item.get("name") or ""), str(item.get("artist") or "")): item
+        for item in data.get("top_tracks", [])
+        if isinstance(item, dict)
+    }
+    seeded_albums = {
+        _norm_key(str(item.get("name") or ""), str(item.get("artist") or "")): item
+        for item in data.get("top_albums", [])
+        if isinstance(item, dict)
+    }
+    seeded_artists = {
+        _norm_key(str(item.get("name") or "")): item
+        for item in data.get("top_artists", [])
+        if isinstance(item, dict)
+    }
+
+    def merge_ranked_rows(
+        incoming: list[dict[str, Any]],
+        seeded: dict[str, dict[str, Any]],
+        key_fn: Any,
+        seed_fields: tuple[str, ...],
+    ) -> list[dict[str, Any]]:
+        merged: list[dict[str, Any]] = []
+        for idx, row in enumerate(incoming[:top_limit], start=1):
+            item = dict(row)
+            item["rank"] = idx
+            seed = seeded.get(key_fn(item))
+            if seed:
+                _apply_seed_fields(item, seed, seed_fields)
+            merged.append(item)
+        return merged
+
+    api_tracks = api_data.get("top_tracks") if isinstance(api_data.get("top_tracks"), list) else []
+    if api_tracks:
+        data["top_tracks"] = merge_ranked_rows(
+            [x for x in api_tracks if isinstance(x, dict)],
+            seeded_tracks,
+            key_fn=lambda x: _norm_key(str(x.get("name") or ""), str(x.get("artist") or "")),
+            seed_fields=("url", "artist_url", "youtube_url", "spotify_type", "spotify_id", "spotify_uri", "spotify_url"),
+        )
+
+    api_albums = api_data.get("top_albums") if isinstance(api_data.get("top_albums"), list) else []
+    if api_albums:
+        data["top_albums"] = merge_ranked_rows(
+            [x for x in api_albums if isinstance(x, dict)],
+            seeded_albums,
+            key_fn=lambda x: _norm_key(str(x.get("name") or ""), str(x.get("artist") or "")),
+            seed_fields=("url", "artist_url", "youtube_url", "spotify_type", "spotify_id", "spotify_uri", "spotify_url", "album_tracks"),
+        )
+
+    api_artists = api_data.get("top_artists") if isinstance(api_data.get("top_artists"), list) else []
+    if api_artists:
+        data["top_artists"] = merge_ranked_rows(
+            [x for x in api_artists if isinstance(x, dict)],
+            seeded_artists,
+            key_fn=lambda x: _norm_key(str(x.get("name") or "")),
+            seed_fields=("url", "youtube_url", "spotify_type", "spotify_id", "spotify_uri", "spotify_url"),
+        )
+
+    api_recent = api_data.get("recent_tracks") if isinstance(api_data.get("recent_tracks"), list) else []
+    if api_recent:
+        data["recent_tracks"] = [x for x in api_recent if isinstance(x, dict)][:recent_limit]
+
+    if isinstance(api_data.get("sync"), dict):
+        data["api_sync"] = api_data["sync"]
+
+
 def render_dashboard_html(data: dict[str, Any], template_path: Path | None = None) -> str:
     if template_path is None:
         template_path = Path(__file__).parent / "template.html"
@@ -880,6 +988,16 @@ def main() -> None:
         help="Force re-fetch all cached album pages",
     )
     parser.add_argument(
+        "--api-aggregates",
+        default="raw_snapshot/api_aggregates.json",
+        help="Optional Last.fm API aggregate JSON to merge into dashboard data",
+    )
+    parser.add_argument(
+        "--skip-api-aggregates",
+        action="store_true",
+        help="Do not merge local API aggregate JSON into dashboard payload",
+    )
+    parser.add_argument(
         "--verbose", "-v",
         action="store_true",
         help="Enable debug-level logging",
@@ -913,6 +1031,16 @@ def main() -> None:
             save_raw_pages(Path(args.save_raw_dir), pages)
 
     data = build_data(args.user, pages)
+
+    if not args.skip_api_aggregates:
+        api_aggregates_path = Path(args.api_aggregates)
+        if api_aggregates_path.exists():
+            try:
+                api_aggregates = json.loads(api_aggregates_path.read_text(encoding="utf-8"))
+                merge_api_aggregates(data, api_aggregates)
+                log.info("Merged API aggregates from %s", api_aggregates_path)
+            except Exception as exc:
+                log.warning("Could not merge API aggregates %s: %s", api_aggregates_path, exc)
 
     # Resolve album cache directory
     if args.input_dir:
