@@ -1,0 +1,1037 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Last.fm Dashboard – __USERNAME__</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@400;500;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    /* ── Colour tokens ── */
+    :root {
+      --bg: #0b0d13;
+      --bg2: #0f1220;
+      --card: #12151f;
+      --card2: #181c28;
+      --line: #222738;
+      --gold: #e8b86d;
+      --teal: #4ecdc4;
+      --text: #cdd5f0;
+      --muted: #7a85a8;
+      --muted2: #4a5270;
+      --danger: #e06b6b;
+    }
+    body.light {
+      --bg: #f4f4ef;
+      --bg2: #eaeae4;
+      --card: #ffffff;
+      --card2: #f7f7f2;
+      --line: #d4d4c8;
+      --gold: #a05c18;
+      --teal: #1a6e6a;
+      --text: #18191f;
+      --muted: #5a607a;
+      --muted2: #9aa0b8;
+      --danger: #b83030;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "DM Sans", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(1100px 380px at 100% -12%, #1b2337 0%, transparent 58%),
+        radial-gradient(880px 360px at -8% -16%, #1a1f30 0%, transparent 58%),
+        linear-gradient(180deg, var(--bg2), var(--bg));
+      transition: background 0.2s, color 0.2s;
+    }
+    body.light {
+      background: var(--bg2);
+    }
+
+    .page {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 44px 24px 72px;
+    }
+
+    /* ── Hero ── */
+    .hero {
+      border: 1px solid var(--line);
+      background: linear-gradient(160deg, #0f1220 0%, #0b0d13 72%);
+      border-radius: 18px;
+      padding: 30px 30px 26px;
+      position: relative;
+      overflow: hidden;
+    }
+    body.light .hero {
+      background: linear-gradient(160deg, var(--card2) 0%, var(--card) 72%);
+    }
+    .hero::after {
+      content: "";
+      position: absolute;
+      inset: auto 20px 0 20px;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--gold), transparent);
+      opacity: 0.35;
+    }
+    .eyebrow {
+      font-family: "DM Mono", monospace;
+      text-transform: uppercase;
+      letter-spacing: 0.18em;
+      color: var(--muted2);
+      font-size: 11px;
+      margin-bottom: 8px;
+    }
+    h1 {
+      margin: 0;
+      font-family: "Playfair Display", serif;
+      font-size: clamp(2.1rem, 4vw, 3.7rem);
+      line-height: 1.05;
+      background: linear-gradient(120deg, #f6d493, #ebb76e 45%, #b67c34);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+    .subtitle {
+      margin-top: 14px;
+      color: var(--muted);
+      max-width: 950px;
+      line-height: 1.65;
+      font-size: 14px;
+    }
+    .meta-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 16px;
+    }
+    .pill {
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.01);
+      color: var(--text);
+      border-radius: 999px;
+      font-size: 12px;
+      padding: 8px 12px;
+      font-family: "DM Mono", monospace;
+    }
+
+    /* ── Theme toggle ── */
+    .theme-toggle {
+      position: absolute;
+      top: 18px;
+      right: 18px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      color: var(--muted);
+      font-family: "DM Mono", monospace;
+      font-size: 11px;
+      padding: 0 12px;
+      cursor: pointer;
+      min-height: 36px;
+      min-width: 44px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .theme-toggle:hover,
+    .theme-toggle:focus-visible {
+      border-color: var(--gold);
+      color: var(--text);
+      outline: none;
+    }
+
+    /* ── KPI grid ── */
+    .grid-4 {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 22px;
+    }
+    .kpi {
+      border: 1px solid var(--line);
+      background: var(--card2);
+      border-radius: 14px;
+      padding: 16px 16px 15px;
+    }
+    .kpi .label {
+      font-family: "DM Mono", monospace;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      color: var(--muted);
+      font-size: 10px;
+      margin-bottom: 8px;
+    }
+    .kpi .value {
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--gold);
+      line-height: 1.1;
+    }
+
+    /* ── Section cards ── */
+    .section {
+      margin-top: 20px;
+      border: 1px solid var(--line);
+      background: var(--card);
+      border-radius: 16px;
+      overflow: hidden;
+      position: relative;
+    }
+    .section::after {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 20px;
+      right: 20px;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--gold), transparent);
+      opacity: 0.28;
+    }
+    .section-head {
+      padding: 16px 18px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+    }
+    .section-title {
+      margin: 0;
+      font-size: 14px;
+      letter-spacing: 0.01em;
+      font-family: "DM Mono", monospace;
+      text-transform: uppercase;
+      color: var(--text);
+    }
+    .section-sub {
+      font-family: "DM Mono", monospace;
+      color: var(--muted);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+    }
+    .section-body {
+      padding: 14px 16px 16px;
+      overflow-x: clip;
+    }
+
+    /* ── Grids ── */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 14px;
+      margin-top: 20px;
+    }
+
+    /* ── Ranked lists ── */
+    .list-search {
+      width: 100%;
+      background: var(--card2);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 8px 12px;
+      color: var(--text);
+      font-family: "DM Sans", sans-serif;
+      font-size: 13px;
+      margin-bottom: 10px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .list-search:focus {
+      border-color: var(--gold);
+    }
+    .list-search::placeholder {
+      color: var(--muted2);
+    }
+    .list {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      display: grid;
+      gap: 8px;
+      max-height: 420px;
+      overflow: auto;
+    }
+    .list-item {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px 12px;
+      background: rgba(255,255,255,0.01);
+      display: grid;
+      grid-template-columns: 36px minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      min-height: 44px;
+    }
+    .list-item[hidden] { display: none; }
+    .rank {
+      font-family: "DM Mono", monospace;
+      color: var(--teal);
+      font-size: 12px;
+    }
+    .name {
+      font-weight: 600;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .sub {
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .count {
+      font-family: "DM Mono", monospace;
+      color: var(--gold);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    /* ── Recent tracks table ── */
+    .recent-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    .recent-table th,
+    .recent-table td {
+      padding: 10px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+    .recent-table th {
+      color: var(--muted);
+      font-family: "DM Mono", monospace;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      font-weight: 500;
+    }
+    .muted { color: var(--muted); }
+    .footer-note {
+      margin-top: 16px;
+      font-size: 12px;
+      color: var(--muted);
+      font-family: "DM Mono", monospace;
+    }
+
+    /* ── Clock summary chips ── */
+    .clock-summary {
+      margin-top: 10px;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .clock-chip {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-size: 11px;
+      font-family: "DM Mono", monospace;
+      color: var(--muted);
+      background: rgba(255,255,255,0.01);
+    }
+
+    /* ── Player ── */
+    .player-layout {
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 14px;
+      align-items: stretch;
+    }
+    .player-frame {
+      position: relative;
+      min-height: 280px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      overflow: hidden;
+      background: #0b0d13;
+    }
+    .player-frame iframe {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      border: 0;
+    }
+    .player-meta {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: rgba(255,255,255,0.01);
+      padding: 14px;
+    }
+    .player-now {
+      font-size: 14px;
+      line-height: 1.6;
+      color: var(--text);
+      margin-bottom: 10px;
+    }
+    .player-note {
+      font-family: "DM Mono", monospace;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.6;
+    }
+    .player-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin: 12px 0;
+    }
+    .player-btn {
+      display: inline-flex;
+      align-items: center;
+      text-decoration: none;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 0 12px;
+      font-family: "DM Mono", monospace;
+      font-size: 11px;
+      color: var(--text);
+      background: rgba(255,255,255,0.01);
+      min-height: 44px;
+      transition: border-color 0.15s;
+    }
+    .player-btn:hover,
+    .player-btn:focus-visible {
+      border-color: var(--gold);
+      outline: none;
+    }
+
+    /* ── Playable items ── */
+    .playable {
+      cursor: pointer;
+      transition: border-color 0.15s, transform 0.12s;
+    }
+    .playable:hover {
+      border-color: var(--gold);
+      transform: translateY(-1px);
+    }
+    .playable:focus-visible {
+      outline: 2px solid var(--gold);
+      outline-offset: 2px;
+    }
+    .warn { color: var(--danger); font-weight: 600; }
+
+    /* ── Charts ── */
+    .chart-wrap {
+      position: relative;
+      width: 100%;
+      height: 320px;
+      overflow: hidden;
+    }
+    canvas { display: block; max-width: 100%; }
+
+    /* ── Responsive ── */
+    @media (max-width: 1024px) {
+      .grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .grid-2 { grid-template-columns: 1fr; }
+      .player-layout { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 640px) {
+      .page { padding: 24px 14px 48px; }
+      .hero { padding: 22px 16px 44px; }
+      .kpi .value { font-size: 24px; }
+      .list-item { grid-template-columns: 30px minmax(0, 1fr) auto; }
+      .recent-table th:nth-child(3),
+      .recent-table td:nth-child(3) { display: none; }
+      .chart-wrap { height: 250px; }
+      .theme-toggle { top: auto; bottom: 14px; right: 14px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page" role="main">
+
+    <section class="hero" aria-label="Profile overview">
+      <div class="eyebrow">Last.fm Listening Intelligence</div>
+      <h1>__USERNAME__ Dashboard</h1>
+      <p class="subtitle" id="profileDescription"></p>
+      <div class="meta-row">
+        <span class="pill">Scrobbling since <strong id="scrobblingSince">-</strong></span>
+        <span class="pill">Generated <strong id="generatedAt">-</strong></span>
+      </div>
+      <div class="grid-4" role="list" aria-label="Key stats">
+        <div class="kpi" role="listitem">
+          <div class="label">Total Scrobbles</div>
+          <div class="value" id="kpiScrobbles" aria-live="polite">0</div>
+        </div>
+        <div class="kpi" role="listitem">
+          <div class="label">Unique Artists</div>
+          <div class="value" id="kpiArtists">0</div>
+        </div>
+        <div class="kpi" role="listitem">
+          <div class="label">Loved Tracks</div>
+          <div class="value" id="kpiLoved">0</div>
+        </div>
+        <div class="kpi" role="listitem">
+          <div class="label">This Week</div>
+          <div class="value" id="kpiWeek">0</div>
+        </div>
+      </div>
+
+      <button class="theme-toggle" id="themeToggle" aria-label="Toggle light/dark theme" title="Toggle theme">
+        <span id="themeIcon">☀</span>
+        <span id="themeLabel">Light</span>
+      </button>
+    </section>
+
+    <section class="section" aria-label="Music player">
+      <div class="section-head">
+        <h2 class="section-title">Now Playing</h2>
+        <span class="section-sub">Click Tracks, Albums, Or Artist Bars</span>
+      </div>
+      <div class="section-body">
+        <div class="player-layout">
+          <div class="player-frame">
+            <iframe
+              id="mediaPlayer"
+              title="Spotify embed player"
+              src="about:blank"
+              allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+              loading="lazy"
+            ></iframe>
+          </div>
+          <div class="player-meta">
+            <div class="player-now" id="playerNow" aria-live="polite">
+              Click a track, album, or artist to start playback.
+            </div>
+            <div class="player-actions">
+              <a id="playerOpenYoutube" class="player-btn" href="https://www.youtube.com" target="_blank" rel="noopener noreferrer" aria-label="Open current track on YouTube">
+                Open on YouTube
+              </a>
+              <a id="playerOpenSpotify" class="player-btn" href="https://open.spotify.com" target="_blank" rel="noopener noreferrer" aria-label="Open current track on Spotify">
+                Open on Spotify
+              </a>
+            </div>
+            <div class="player-note">
+              Track click: plays that song.<br>
+              Album click: plays a random track from that album (when available).<br>
+              Artist click: plays a random song for that artist.<br>
+              Embeds use Spotify only (avoids YouTube error 153).
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="grid-2">
+      <section class="section" aria-label="Top artists chart">
+        <div class="section-head">
+          <h2 class="section-title">Top Artists (All Time)</h2>
+          <span class="section-sub">From Last.fm Library</span>
+        </div>
+        <div class="section-body">
+          <div class="chart-wrap"><canvas id="artistsChart" aria-label="Top artists bar chart" role="img"></canvas></div>
+        </div>
+      </section>
+      <section class="section" aria-label="Top tracks list">
+        <div class="section-head">
+          <h2 class="section-title">Top Tracks (All Time)</h2>
+          <span class="section-sub">Top 15</span>
+        </div>
+        <div class="section-body">
+          <input
+            class="list-search"
+            id="tracksSearch"
+            type="search"
+            placeholder="Filter tracks…"
+            aria-label="Filter top tracks"
+            aria-controls="tracksList"
+          >
+          <ul class="list" id="tracksList" aria-label="Top tracks"></ul>
+        </div>
+      </section>
+    </div>
+
+    <div class="grid-2">
+      <section class="section" aria-label="Top albums list">
+        <div class="section-head">
+          <h2 class="section-title">Top Albums (All Time)</h2>
+          <span class="section-sub">Top 20</span>
+        </div>
+        <div class="section-body">
+          <input
+            class="list-search"
+            id="albumsSearch"
+            type="search"
+            placeholder="Filter albums…"
+            aria-label="Filter top albums"
+            aria-controls="albumsList"
+          >
+          <ul class="list" id="albumsList" aria-label="Top albums"></ul>
+        </div>
+      </section>
+      <section class="section" aria-label="Listening clock">
+        <div class="section-head">
+          <h2 class="section-title">Listening Clock (24h)</h2>
+          <span class="section-sub">Scrobbles By Hour</span>
+        </div>
+        <div class="section-body">
+          <div class="chart-wrap"><canvas id="clockChart" aria-label="Hourly listening pattern bar chart" role="img"></canvas></div>
+          <div id="clockSummary" class="clock-summary" aria-live="polite"></div>
+          <div class="footer-note">If empty, Last.fm did not expose listening-report data in public HTML.</div>
+        </div>
+      </section>
+    </div>
+
+    <section class="section" aria-label="Recent tracks">
+      <div class="section-head">
+        <h2 class="section-title">Recent Tracks</h2>
+        <span class="section-sub">Latest 40 Public Scrobbles</span>
+      </div>
+      <div class="section-body">
+        <table class="recent-table">
+          <thead>
+            <tr>
+              <th scope="col">#</th>
+              <th scope="col">Track</th>
+              <th scope="col">Artist</th>
+              <th scope="col">Played At (Local)</th>
+            </tr>
+          </thead>
+          <tbody id="recentTracksTable"></tbody>
+        </table>
+        <div class="footer-note">
+          Data source: public pages under <code>last.fm/user/__USERNAME__</code>.
+          Some filtered views require login and may not be scrapeable anonymously.
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <script>
+    const DATA = __DATA_JSON__;
+    const nf = new Intl.NumberFormat("en-US");
+
+    // ── Theme toggle ──────────────────────────────────────────────────────────
+    const themeToggle = document.getElementById("themeToggle");
+    const themeIcon = document.getElementById("themeIcon");
+    const themeLabel = document.getElementById("themeLabel");
+
+    function applyTheme(light) {
+      document.body.classList.toggle("light", light);
+      themeIcon.textContent = light ? "🌙" : "☀";
+      themeLabel.textContent = light ? "Dark" : "Light";
+    }
+
+    const savedTheme = localStorage.getItem("lastfm-theme");
+    applyTheme(savedTheme === "light");
+
+    themeToggle.addEventListener("click", () => {
+      const isLight = document.body.classList.toggle("light");
+      localStorage.setItem("lastfm-theme", isLight ? "light" : "dark");
+      applyTheme(isLight);
+    });
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+    const fmtDate = (iso) => {
+      const d = new Date(iso);
+      return Number.isNaN(d.getTime()) ? "-" : d.toLocaleString();
+    };
+
+    const setText = (id, value) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = value;
+    };
+
+    const esc = (v) =>
+      String(v ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;");
+
+    // ── Populate header ───────────────────────────────────────────────────────
+    setText("profileDescription", DATA.profile.description || "Last.fm public-profile snapshot.");
+    setText("scrobblingSince", DATA.profile.scrobbling_since || "-");
+    setText("generatedAt", fmtDate(DATA.generated_at_utc));
+    setText("kpiScrobbles", nf.format(DATA.profile.total_scrobbles || 0));
+    setText("kpiArtists", nf.format(DATA.profile.total_artists || 0));
+    setText("kpiLoved", nf.format(DATA.profile.loved_tracks || 0));
+    setText("kpiWeek", nf.format(DATA.weekly_report.scrobbles_this_week || 0));
+
+    // ── Data slices ───────────────────────────────────────────────────────────
+    const topTracks = DATA.top_tracks.slice(0, 15);
+    const topAlbums = DATA.top_albums.slice(0, 20);
+    const topArtists = DATA.top_artists.slice(0, 15);
+
+    // ── Player refs ───────────────────────────────────────────────────────────
+    const playerIframe = document.getElementById("mediaPlayer");
+    const playerNow = document.getElementById("playerNow");
+    const playerOpenYoutube = document.getElementById("playerOpenYoutube");
+    const playerOpenSpotify = document.getElementById("playerOpenSpotify");
+
+    function randomChoice(list) {
+      return list[Math.floor(Math.random() * list.length)];
+    }
+
+    function extractYoutubeId(raw) {
+      if (!raw) return "";
+      const m =
+        raw.match(/[?&]v=([^&]+)/) ||
+        raw.match(/youtu\.be\/([^?&/]+)/) ||
+        raw.match(/embed\/([^?&/]+)/);
+      return m && m[1] ? m[1] : "";
+    }
+
+    function extractSpotifyId(raw, type) {
+      if (!raw) return "";
+      const re = new RegExp(
+        `(?:spotify:${type}:|open\\.spotify\\.com/(?:intl-[a-z-]+/)?${type}/)([A-Za-z0-9]+)`,
+        "i"
+      );
+      const m = raw.match(re);
+      return m && m[1] ? m[1] : "";
+    }
+
+    function youtubeWatchUrl(track) {
+      const raw = (track.youtube_url || "").trim();
+      if (raw) return raw;
+      const q = `${track.artist || ""} ${track.name || track.track || ""}`.trim();
+      return `https://www.youtube.com/results?search_query=${encodeURIComponent(q || "music")}`;
+    }
+
+    function spotifyOpenUrl(track) {
+      const direct = (track.spotify_url || "").trim();
+      if (direct) return direct;
+      const q = `${track.artist || ""} ${track.name || track.track || ""}`.trim();
+      return `https://open.spotify.com/search/${encodeURIComponent(q || "music")}`;
+    }
+
+    function spotifyTrackEmbedUrl(track) {
+      const id =
+        (track.spotify_id || "").trim() ||
+        extractSpotifyId(track.spotify_url || track.spotify_uri || "", "track");
+      return id ? `https://open.spotify.com/embed/track/${id}?utm_source=generator` : "";
+    }
+
+    function spotifyAlbumEmbedUrl(album) {
+      const id =
+        (album.spotify_id || "").trim() ||
+        extractSpotifyId(album.spotify_url || album.spotify_uri || "", "album");
+      return id ? `https://open.spotify.com/embed/album/${id}?utm_source=generator` : "";
+    }
+
+    function spotifyArtistEmbedUrl(artist) {
+      const id =
+        (artist.spotify_id || "").trim() ||
+        extractSpotifyId(artist.spotify_url || artist.spotify_uri || "", "artist");
+      return id ? `https://open.spotify.com/embed/artist/${id}?utm_source=generator` : "";
+    }
+
+    function setPlayerLinks(youtubeUrl, spotifyUrl) {
+      if (playerOpenYoutube) playerOpenYoutube.href = youtubeUrl || "https://www.youtube.com";
+      if (playerOpenSpotify) playerOpenSpotify.href = spotifyUrl || "https://open.spotify.com";
+    }
+
+    function playTrack(track, contextLabel) {
+      const ytOpen = youtubeWatchUrl(track);
+      const spOpen = spotifyOpenUrl(track);
+      const spEmbed = spotifyTrackEmbedUrl(track);
+      const selected = spEmbed || "about:blank";
+      const source = spEmbed ? "Spotify" : "Links";
+      setPlayerLinks(ytOpen, spOpen);
+      if (playerIframe) playerIframe.src = selected;
+      if (playerNow) {
+        const title = track.name || track.track || "Unknown track";
+        const artist = track.artist ? ` – ${track.artist}` : "";
+        const hint = selected === "about:blank" ? " (no embed – use Open on Spotify)" : "";
+        playerNow.textContent = `${contextLabel}: ${title}${artist} [${source}]${hint}`;
+      }
+    }
+
+    function playSpotifyEntity(entity, kind) {
+      let embed = "";
+      if (kind === "album") embed = spotifyAlbumEmbedUrl(entity);
+      if (kind === "artist") embed = spotifyArtistEmbedUrl(entity);
+      if (!embed) return false;
+      const label = entity.name || `Unknown ${kind}`;
+      const artist = entity.artist ? ` – ${entity.artist}` : "";
+      setPlayerLinks(
+        youtubeWatchUrl({ name: entity.name || "", artist: entity.artist || "" }),
+        entity.spotify_url || "https://open.spotify.com"
+      );
+      if (playerIframe) playerIframe.src = embed;
+      if (playerNow)
+        playerNow.textContent = `${kind[0].toUpperCase() + kind.slice(1)}: ${label}${artist} [Spotify ${kind}]`;
+      return true;
+    }
+
+    function playAlbum(album) {
+      const albumTracks = (album.album_tracks || []).map((t) => ({
+        name: t.name,
+        artist: t.artist || album.artist || "",
+        youtube_url: t.youtube_url || "",
+        spotify_id: t.spotify_id || "",
+        spotify_uri: t.spotify_uri || "",
+        spotify_url: t.spotify_url || "",
+      }));
+      const byArtist = DATA.top_tracks.filter(
+        (t) => (t.artist || "").toLowerCase() === (album.artist || "").toLowerCase()
+      );
+      const candidates = albumTracks.length ? albumTracks : byArtist;
+      const spotifyCandidates = candidates.filter((t) => !!spotifyTrackEmbedUrl(t));
+      if (spotifyCandidates.length) {
+        playTrack(randomChoice(spotifyCandidates), `Album: ${album.name}`);
+        return;
+      }
+      if (playSpotifyEntity(album, "album")) return;
+      playTrack(
+        candidates.length
+          ? randomChoice(candidates)
+          : { name: `${album.name} full album`, artist: album.artist || "", youtube_url: "" },
+        "Album"
+      );
+    }
+
+    function playArtist(artist) {
+      const candidates = DATA.top_tracks.filter(
+        (t) => (t.artist || "").toLowerCase() === (artist.name || "").toLowerCase()
+      );
+      const spotifyCandidates = candidates.filter((t) => !!spotifyTrackEmbedUrl(t));
+      if (spotifyCandidates.length) {
+        playTrack(randomChoice(spotifyCandidates), `Artist: ${artist.name}`);
+        return;
+      }
+      if (!candidates.length) {
+        if (playSpotifyEntity(artist, "artist")) return;
+        playTrack({ name: "top song", artist: artist.name || "", youtube_url: "" }, "Artist");
+        return;
+      }
+      playTrack(randomChoice(candidates), `Artist: ${artist.name}`);
+    }
+
+    // ── Render ranked lists ───────────────────────────────────────────────────
+    function renderRankedList(targetId, items, options, kind) {
+      const root = document.getElementById(targetId);
+      if (!root) return;
+      if (!items || !items.length) {
+        root.innerHTML = "<li class='list-item'><span class='warn'>No data available.</span></li>";
+        return;
+      }
+      root.innerHTML = items
+        .map(
+          (item, i) => `
+          <li class="list-item playable"
+              role="button"
+              tabindex="0"
+              data-kind="${kind}"
+              data-index="${i}"
+              data-search="${esc((options.name(item) + " " + (options.sub ? options.sub(item) : "")).toLowerCase())}"
+              aria-label="Play ${esc(options.name(item))}${options.sub && options.sub(item) ? " by " + esc(options.sub(item)) : ""}">
+            <div class="rank" aria-hidden="true">#${i + 1}</div>
+            <div>
+              <div class="name">${esc(options.name(item))}</div>
+              ${options.sub && options.sub(item) ? `<div class="sub">${esc(options.sub(item))}</div>` : ""}
+            </div>
+            <div class="count" aria-label="${esc(options.count ? options.count(item) : "")} scrobbles">
+              ${esc(options.count ? options.count(item) : "")} ▶
+            </div>
+          </li>`
+        )
+        .join("");
+    }
+
+    renderRankedList(
+      "tracksList",
+      topTracks,
+      { name: (x) => x.name, sub: (x) => x.artist || "", count: (x) => nf.format(x.scrobbles || 0) },
+      "track"
+    );
+    renderRankedList(
+      "albumsList",
+      topAlbums,
+      { name: (x) => x.name, sub: (x) => x.artist || "", count: (x) => nf.format(x.scrobbles || 0) },
+      "album"
+    );
+
+    // ── List search/filter ────────────────────────────────────────────────────
+    function attachSearch(inputId, listId) {
+      const input = document.getElementById(inputId);
+      const list = document.getElementById(listId);
+      if (!input || !list) return;
+      input.addEventListener("input", () => {
+        const q = input.value.toLowerCase().trim();
+        list.querySelectorAll(".list-item[data-search]").forEach((el) => {
+          const match = !q || el.dataset.search.includes(q);
+          el.hidden = !match;
+        });
+      });
+    }
+    attachSearch("tracksSearch", "tracksList");
+    attachSearch("albumsSearch", "albumsList");
+
+    // ── List click & keyboard handlers ────────────────────────────────────────
+    function handleListActivate(el) {
+      const kind = el.getAttribute("data-kind");
+      const index = Number(el.getAttribute("data-index"));
+      if (Number.isNaN(index) || index < 0) return;
+      if (kind === "track" && topTracks[index]) playTrack(topTracks[index], "Track");
+      else if (kind === "album" && topAlbums[index]) playAlbum(topAlbums[index]);
+    }
+
+    document.querySelectorAll(".list-item.playable").forEach((el) => {
+      el.addEventListener("click", () => handleListActivate(el));
+      el.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          handleListActivate(el);
+        }
+      });
+    });
+
+    // ── Recent tracks table ───────────────────────────────────────────────────
+    const recentTbody = document.getElementById("recentTracksTable");
+    if (recentTbody) {
+      recentTbody.innerHTML = (DATA.recent_tracks || [])
+        .map(
+          (x, i) => `
+          <tr>
+            <td class="muted">${i + 1}</td>
+            <td>${esc(x.track || "")}</td>
+            <td class="muted">${esc(x.artist || "")}</td>
+            <td class="muted">${x.timestamp ? new Date(x.timestamp * 1000).toLocaleString() : "-"}</td>
+          </tr>`
+        )
+        .join("");
+    }
+
+    // ── Charts ────────────────────────────────────────────────────────────────
+    const chartDefaults = {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: "rgba(11,15,26,0.95)",
+          borderColor: "#33476f",
+          borderWidth: 1,
+          titleColor: "#ffffff",
+          bodyColor: "#c9d6f3",
+          padding: 10,
+        },
+      },
+      scales: {
+        x: {
+          ticks: { color: "#9ab0d7" },
+          grid: { color: "rgba(77,104,158,0.24)" },
+        },
+        y: {
+          ticks: { color: "#9ab0d7" },
+          grid: { color: "rgba(77,104,158,0.2)" },
+        },
+      },
+    };
+
+    // Artists bar chart
+    const artistsCtx = document.getElementById("artistsChart");
+    if (artistsCtx && window.Chart) {
+      new Chart(artistsCtx, {
+        type: "bar",
+        data: {
+          labels: topArtists.map((a) => a.name),
+          datasets: [
+            {
+              data: topArtists.map((a) => a.scrobbles),
+              backgroundColor: "#ebb76e",
+              borderRadius: 6,
+            },
+          ],
+        },
+        options: {
+          ...chartDefaults,
+          indexAxis: "y",
+          onClick: (_event, elements) => {
+            if (!elements?.length) return;
+            const idx = elements[0].index;
+            if (topArtists[idx]) playArtist(topArtists[idx]);
+          },
+          onHover: (event, elements) => {
+            if (event?.native?.target)
+              event.native.target.style.cursor = elements?.length ? "pointer" : "default";
+          },
+        },
+      });
+    }
+
+    // Listening clock chart
+    const clock = (DATA.weekly_report.listening_clock || [])
+      .map((x, idx) => ({
+        hour24: Number.isFinite(x.hour24) ? x.hour24 : idx,
+        label: x.hour24_label || x.hour || String(idx),
+        scrobbles: Number(x.scrobbles || 0),
+      }))
+      .sort((a, b) => a.hour24 - b.hour24);
+
+    const clockSummary = document.getElementById("clockSummary");
+    if (clockSummary && clock.length) {
+      const total = clock.reduce((acc, x) => acc + x.scrobbles, 0);
+      const peak = clock.reduce((a, b) => (b.scrobbles > a.scrobbles ? b : a), clock[0]);
+      const silent = clock.filter((x) => x.scrobbles === 0).length;
+      clockSummary.innerHTML = `
+        <span class="clock-chip">Peak hour: ${peak.label} (${nf.format(peak.scrobbles)})</span>
+        <span class="clock-chip">24h total: ${nf.format(total)}</span>
+        <span class="clock-chip">Silent hours: ${silent}</span>`;
+    }
+
+    const clockCtx = document.getElementById("clockChart");
+    if (clockCtx && window.Chart && clock.length) {
+      new Chart(clockCtx, {
+        type: "bar",
+        data: {
+          labels: clock.map((x) => x.label),
+          datasets: [
+            {
+              data: clock.map((x) => x.scrobbles),
+              backgroundColor: clock.map((x) =>
+                x.scrobbles === 0 ? "rgba(122,133,168,0.20)" : "rgba(78,205,196,0.78)"
+              ),
+              borderColor: clock.map((x) =>
+                x.scrobbles === 0 ? "rgba(122,133,168,0.30)" : "rgba(78,205,196,1)"
+              ),
+              borderWidth: 1,
+              borderRadius: 4,
+              barPercentage: 0.92,
+              categoryPercentage: 0.94,
+            },
+          ],
+        },
+        options: {
+          ...chartDefaults,
+          scales: {
+            x: {
+              ticks: {
+                color: "#9ab0d7",
+                autoSkip: false,
+                maxRotation: 0,
+                minRotation: 0,
+                callback: (value, index) =>
+                  index % 2 === 0 ? clock[index].label.slice(0, 2) : "",
+              },
+              grid: { color: "rgba(77,104,158,0.12)" },
+            },
+            y: {
+              beginAtZero: true,
+              ticks: { color: "#9ab0d7" },
+              grid: { color: "rgba(77,104,158,0.2)" },
+            },
+          },
+        },
+      });
+    }
+  </script>
+</body>
+</html>

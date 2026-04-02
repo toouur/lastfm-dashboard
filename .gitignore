@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+.venv/
+venv/
+env/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Generated outputs
+index.html
+lastfm_data.json
+
+# Raw HTML snapshots (large, transient)
+raw_snapshot/
+
+# Scrobble stats export (large personal data)
+lastfmstats-*.json
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+desktop.ini
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# JetBrains
+.idea/
+
+# pytest / coverage
+.pytest_cache/
+.coverage
+htmlcov/
