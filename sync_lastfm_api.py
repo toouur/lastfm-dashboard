@@ -457,7 +457,11 @@ def load_seed_scrobbles(path: Path) -> list[dict[str, Any]]:
 
 def discover_seed_export(username: str, root: Path) -> Path | None:
     lower_user = username.lower()
-    candidates = sorted(root.glob("recenttracks-*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+    pattern_candidates = [
+        *root.glob("lastfmstats-*.json"),
+        *root.glob("recenttracks-*.json"),
+    ]
+    candidates = sorted(pattern_candidates, key=lambda p: p.stat().st_mtime, reverse=True)
     if not candidates:
         return None
 

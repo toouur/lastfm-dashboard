@@ -10,6 +10,7 @@ on:
       - "build_lastfm_dashboard.py"
       - "sync_lastfm_api.py"
       - "recenttracks-*.json"
+      - "lastfmstats-*.json"
       - "template.html"
       - ".github/workflows/deploy-pages.yml"
 
@@ -51,7 +52,7 @@ jobs:
             --user "$LASTFM_USER" \
             --cache raw_snapshot/api_scrobbles_cache.json \
             --aggregates raw_snapshot/api_aggregates.json \
-            --seed-export recenttracks-toouur-1775147657.json \
+            --seed-export lastfmstats-TOOUUR.json \
             --lookback-hours 72 \
             --delay-ms 120
 

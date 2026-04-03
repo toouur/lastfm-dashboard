@@ -50,10 +50,10 @@ python build_lastfm_dashboard.py --user TOOUUR --api-aggregates raw_snapshot/api
 
 This keeps a persistent scrobble cache in `raw_snapshot/api_scrobbles_cache.json` and updates only the delta on each run.
 
-If you have an export such as `recenttracks-toouur-1775147657.json`, it can be used as a bootstrap dataset on the first run:
+If you have an export such as `lastfmstats-TOOUUR.json` (or `recenttracks-*.json`), it can be used as a bootstrap dataset on the first run:
 
 ```bash
-python sync_lastfm_api.py --user TOOUUR --seed-export recenttracks-toouur-1775147657.json
+python sync_lastfm_api.py --user TOOUUR --seed-export lastfmstats-TOOUUR.json
 ```
 
 After that, each run increments from new API scrobbles and deduplicates against the seeded cache.
