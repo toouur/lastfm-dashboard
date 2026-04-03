@@ -73,7 +73,6 @@ jobs:
             --cache raw_snapshot/api_scrobbles_cache.json \
             --aggregates raw_snapshot/api_aggregates.json \
             --full-export raw_snapshot/all_scrobbles_api.json \
-            --seed-export raw_snapshot/all_scrobbles_api.json \
             --lookback-hours 72 \
             --delay-ms 120
 
