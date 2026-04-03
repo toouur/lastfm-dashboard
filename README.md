@@ -49,6 +49,9 @@ python build_lastfm_dashboard.py --user TOOUUR --api-aggregates raw_snapshot/api
 ```
 
 This keeps a persistent scrobble cache in `raw_snapshot/api_scrobbles_cache.json` and updates only the delta on each run.
+It also writes:
+- `raw_snapshot/all_scrobbles_api.json` (full normalized searchable scrobbles export)
+- `raw_snapshot/scrobbles_diff.json` (diff report vs existing export when `--compare-with` is set)
 
 If you have an export such as `lastfmstats-TOOUUR.json` (or `recenttracks-*.json`), it can be used as a bootstrap dataset on the first run:
 
@@ -57,6 +60,15 @@ python sync_lastfm_api.py --user TOOUUR --seed-export lastfmstats-TOOUUR.json
 ```
 
 After that, each run increments from new API scrobbles and deduplicates against the seeded cache.
+
+To compare API/full cache against your existing export:
+
+```bash
+python sync_lastfm_api.py \
+  --user TOOUUR \
+  --compare-with lastfmstats-TOOUUR.json \
+  --diff-output raw_snapshot/scrobbles_diff.json
+```
 
 ## Usage
 

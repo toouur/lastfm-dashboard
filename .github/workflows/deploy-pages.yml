@@ -52,6 +52,9 @@ jobs:
             --user "$LASTFM_USER" \
             --cache raw_snapshot/api_scrobbles_cache.json \
             --aggregates raw_snapshot/api_aggregates.json \
+            --full-export raw_snapshot/all_scrobbles_api.json \
+            --compare-with lastfmstats-TOOUUR.json \
+            --diff-output raw_snapshot/scrobbles_diff.json \
             --seed-export lastfmstats-TOOUUR.json \
             --lookback-hours 72 \
             --delay-ms 120

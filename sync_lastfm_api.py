@@ -660,6 +660,135 @@ def build_aggregates(
     }
 
 
+def to_full_export(username: str, scrobbles: list[dict[str, Any]]) -> dict[str, Any]:
+    rows = sorted(scrobbles, key=lambda x: parse_int(x.get("uts"), 0), reverse=True)
+    export_rows: list[dict[str, Any]] = []
+    for row in rows:
+        uts = parse_int(row.get("uts"), 0)
+        export_rows.append(
+            {
+                "track": str(row.get("track") or ""),
+                "artist": str(row.get("artist") or ""),
+                "album": str(row.get("album") or ""),
+                "albumId": "",
+                "date": uts * 1000 if uts else 0,
+            }
+        )
+    return {"username": username, "scrobbles": export_rows}
+
+
+def _normalize_comp_row(raw: dict[str, Any]) -> dict[str, Any] | None:
+    if not isinstance(raw, dict):
+        return None
+    uts = parse_uts(raw.get("date") or raw.get("uts") or raw.get("timestamp") or raw.get("time"))
+    if not uts:
+        return None
+    track = _normalize_text(str(raw.get("track") or raw.get("name") or raw.get("title") or ""))
+    artist = _normalize_text(str(raw.get("artist") or raw.get("artist_name") or ""))
+    album = _normalize_text(str(raw.get("album") or raw.get("album_name") or ""))
+    if not track:
+        return None
+    return {"uts": uts, "track": track, "artist": artist, "album": album}
+
+
+def _comp_key(item: dict[str, Any]) -> tuple[int, str, str, str]:
+    return (
+        parse_int(item.get("uts"), 0),
+        _normalize_text(str(item.get("artist") or "")).lower(),
+        _normalize_text(str(item.get("track") or "")).lower(),
+        _normalize_text(str(item.get("album") or "")).lower(),
+    )
+
+
+def compare_with_existing_export(
+    merged_scrobbles: list[dict[str, Any]],
+    existing_export_path: Path,
+    sample_size: int = 20,
+) -> dict[str, Any]:
+    try:
+        existing_payload = json.loads(existing_export_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise RuntimeError(f"Could not read existing export {existing_export_path}: {exc}") from exc
+
+    existing_raw = existing_payload.get("scrobbles") if isinstance(existing_payload, dict) else []
+    if not isinstance(existing_raw, list):
+        existing_raw = []
+
+    existing_norm: list[dict[str, Any]] = []
+    for row in existing_raw:
+        norm = _normalize_comp_row(row if isinstance(row, dict) else {})
+        if norm:
+            existing_norm.append(norm)
+
+    merged_norm = [
+        {
+            "uts": parse_int(row.get("uts"), 0),
+            "track": _normalize_text(str(row.get("track") or "")),
+            "artist": _normalize_text(str(row.get("artist") or "")),
+            "album": _normalize_text(str(row.get("album") or "")),
+        }
+        for row in merged_scrobbles
+        if isinstance(row, dict) and parse_int(row.get("uts"), 0) > 0 and str(row.get("track") or "").strip()
+    ]
+
+    existing_counter = Counter(_comp_key(x) for x in existing_norm)
+    merged_counter = Counter(_comp_key(x) for x in merged_norm)
+    existing_keys = set(existing_counter.keys())
+    merged_keys = set(merged_counter.keys())
+
+    only_api_keys = merged_keys - existing_keys
+    only_existing_keys = existing_keys - merged_keys
+    shared_keys = merged_keys & existing_keys
+
+    merged_map = {_comp_key(x): x for x in merged_norm}
+    existing_map = {_comp_key(x): x for x in existing_norm}
+
+    def _render_row(item: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "uts": parse_int(item.get("uts"), 0),
+            "date_utc": dt.datetime.fromtimestamp(parse_int(item.get("uts"), 0), tz=dt.timezone.utc).isoformat(),
+            "track": str(item.get("track") or ""),
+            "artist": str(item.get("artist") or ""),
+            "album": str(item.get("album") or ""),
+        }
+
+    only_api_rows = sorted(
+        (_render_row(merged_map[k]) for k in only_api_keys if k in merged_map),
+        key=lambda x: x["uts"],
+        reverse=True,
+    )
+    only_existing_rows = sorted(
+        (_render_row(existing_map[k]) for k in only_existing_keys if k in existing_map),
+        key=lambda x: x["uts"],
+        reverse=True,
+    )
+
+    merged_latest = max((parse_int(x.get("uts"), 0) for x in merged_norm), default=0)
+    existing_latest = max((parse_int(x.get("uts"), 0) for x in existing_norm), default=0)
+    merged_oldest = min((parse_int(x.get("uts"), 0) for x in merged_norm), default=0)
+    existing_oldest = min((parse_int(x.get("uts"), 0) for x in existing_norm), default=0)
+
+    return {
+        "generated_at_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "existing_export": str(existing_export_path),
+        "api_total_rows": len(merged_norm),
+        "existing_total_rows": len(existing_norm),
+        "api_unique_rows": len(merged_keys),
+        "existing_unique_rows": len(existing_keys),
+        "api_duplicate_rows": len(merged_norm) - len(merged_keys),
+        "existing_duplicate_rows": len(existing_norm) - len(existing_keys),
+        "shared_rows": len(shared_keys),
+        "only_api_rows": len(only_api_keys),
+        "only_existing_rows": len(only_existing_keys),
+        "api_latest_uts": merged_latest,
+        "existing_latest_uts": existing_latest,
+        "api_oldest_uts": merged_oldest,
+        "existing_oldest_uts": existing_oldest,
+        "sample_only_api": only_api_rows[:sample_size],
+        "sample_only_existing": only_existing_rows[:sample_size],
+    }
+
+
 def write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -677,6 +806,26 @@ def main() -> None:
     parser.add_argument("--max-pages", type=int, default=0, help="Max pages per run (0 = all pages)")
     parser.add_argument("--delay-ms", type=int, default=120, help="Delay between page requests in milliseconds")
     parser.add_argument("--timeout", type=int, default=30, help="HTTP timeout in seconds")
+    parser.add_argument(
+        "--full-export",
+        default="raw_snapshot/all_scrobbles_api.json",
+        help="Path to full exported scrobbles JSON",
+    )
+    parser.add_argument(
+        "--skip-full-export",
+        action="store_true",
+        help="Skip writing full exported scrobbles JSON",
+    )
+    parser.add_argument(
+        "--compare-with",
+        default="",
+        help="Optional existing export JSON to compare against",
+    )
+    parser.add_argument(
+        "--diff-output",
+        default="raw_snapshot/scrobbles_diff.json",
+        help="Path to diff output JSON when --compare-with is set",
+    )
     parser.add_argument(
         "--seed-export",
         default="",
@@ -771,6 +920,26 @@ def main() -> None:
         "last_synced_uts": last_synced_uts,
     }
     write_json(aggregates_path, aggregates)
+
+    if not args.skip_full_export:
+        full_export = to_full_export(args.user, merged)
+        write_json(Path(args.full_export), full_export)
+        log.info("Full export written: %s", Path(args.full_export).resolve())
+
+    if args.compare_with:
+        compare_path = Path(args.compare_with)
+        if compare_path.exists():
+            diff = compare_with_existing_export(merged, compare_path)
+            write_json(Path(args.diff_output), diff)
+            log.info(
+                "Diff written: %s (only_api=%d, only_existing=%d, shared=%d)",
+                Path(args.diff_output).resolve(),
+                parse_int(diff.get("only_api_rows"), 0),
+                parse_int(diff.get("only_existing_rows"), 0),
+                parse_int(diff.get("shared_rows"), 0),
+            )
+        else:
+            log.warning("Compare file not found: %s", compare_path)
 
     log.info(
         "Sync complete: fetched=%d added=%d updated=%d total=%d",
