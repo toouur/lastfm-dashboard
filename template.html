@@ -711,30 +711,59 @@
       return `https://open.spotify.com/search/${encodeURIComponent(q || "music")}`;
     }
 
+    function withEmbedAutoplay(url) {
+      if (!url) return "";
+      const sep = url.includes("?") ? "&" : "?";
+      return `${url}${sep}utm_source=generator&autoplay=1`;
+    }
+
     function spotifyTrackEmbedUrl(track) {
       const id =
         (track.spotify_id || "").trim() ||
         extractSpotifyId(track.spotify_url || track.spotify_uri || "", "track");
-      return id ? `https://open.spotify.com/embed/track/${id}?utm_source=generator` : "";
+      return id ? withEmbedAutoplay(`https://open.spotify.com/embed/track/${id}`) : "";
     }
 
     function spotifyAlbumEmbedUrl(album) {
       const id =
         (album.spotify_id || "").trim() ||
         extractSpotifyId(album.spotify_url || album.spotify_uri || "", "album");
-      return id ? `https://open.spotify.com/embed/album/${id}?utm_source=generator` : "";
+      return id ? withEmbedAutoplay(`https://open.spotify.com/embed/album/${id}`) : "";
     }
 
     function spotifyArtistEmbedUrl(artist) {
       const id =
         (artist.spotify_id || "").trim() ||
         extractSpotifyId(artist.spotify_url || artist.spotify_uri || "", "artist");
-      return id ? `https://open.spotify.com/embed/artist/${id}?utm_source=generator` : "";
+      return id ? withEmbedAutoplay(`https://open.spotify.com/embed/artist/${id}`) : "";
     }
 
     function setPlayerLinks(youtubeUrl, spotifyUrl) {
       if (playerOpenYoutube) playerOpenYoutube.href = youtubeUrl || "https://www.youtube.com";
       if (playerOpenSpotify) playerOpenSpotify.href = spotifyUrl || "https://open.spotify.com";
+    }
+
+    function setPlayerEmbedSrc(src) {
+      if (!playerIframe) return;
+      const target = src || "about:blank";
+      // Force reload so repeated clicks on the same item still retrigger playback attempt.
+      playerIframe.src = "about:blank";
+      if (target === "about:blank") return;
+      window.setTimeout(() => {
+        if (playerIframe) playerIframe.src = target;
+      }, 20);
+    }
+
+    function asPlayableTrack(item, fallbackArtist = "") {
+      return {
+        name: item.name || item.track || "",
+        track: item.track || item.name || "",
+        artist: item.artist || fallbackArtist || "",
+        youtube_url: item.youtube_url || "",
+        spotify_id: item.spotify_id || "",
+        spotify_uri: item.spotify_uri || "",
+        spotify_url: item.spotify_url || "",
+      };
     }
 
     function playTrack(track, contextLabel) {
@@ -744,7 +773,7 @@
       const selected = spEmbed || "about:blank";
       const source = spEmbed ? "Spotify" : "Links";
       setPlayerLinks(ytOpen, spOpen);
-      if (playerIframe) playerIframe.src = selected;
+      setPlayerEmbedSrc(selected);
       if (playerNow) {
         const title = track.name || track.track || "Unknown track";
         const artist = track.artist ? ` – ${track.artist}` : "";
@@ -764,7 +793,7 @@
         youtubeWatchUrl({ name: entity.name || "", artist: entity.artist || "" }),
         entity.spotify_url || "https://open.spotify.com"
       );
-      if (playerIframe) playerIframe.src = embed;
+      setPlayerEmbedSrc(embed);
       if (playerNow)
         playerNow.textContent = `${kind[0].toUpperCase() + kind.slice(1)}: ${label}${artist} [Spotify ${kind}]`;
       return true;
@@ -779,10 +808,13 @@
         spotify_uri: t.spotify_uri || "",
         spotify_url: t.spotify_url || "",
       }));
-      const byArtist = DATA.top_tracks.filter(
+      const byArtistTop = (DATA.top_tracks || []).filter(
         (t) => (t.artist || "").toLowerCase() === (album.artist || "").toLowerCase()
       );
-      const candidates = albumTracks.length ? albumTracks : byArtist;
+      const byArtistRecent = (DATA.recent_tracks || [])
+        .filter((t) => (t.artist || "").toLowerCase() === (album.artist || "").toLowerCase())
+        .map((t) => asPlayableTrack(t, album.artist || ""));
+      const candidates = [...albumTracks, ...byArtistTop, ...byArtistRecent];
       const spotifyCandidates = candidates.filter((t) => !!spotifyTrackEmbedUrl(t));
       if (spotifyCandidates.length) {
         playTrack(randomChoice(spotifyCandidates), `Album: ${album.name}`);
@@ -798,9 +830,13 @@
     }
 
     function playArtist(artist) {
-      const candidates = DATA.top_tracks.filter(
+      const topMatches = (DATA.top_tracks || []).filter(
         (t) => (t.artist || "").toLowerCase() === (artist.name || "").toLowerCase()
       );
+      const recentMatches = (DATA.recent_tracks || [])
+        .filter((t) => (t.artist || "").toLowerCase() === (artist.name || "").toLowerCase())
+        .map((t) => asPlayableTrack(t, artist.name || ""));
+      const candidates = [...topMatches, ...recentMatches];
       const spotifyCandidates = candidates.filter((t) => !!spotifyTrackEmbedUrl(t));
       if (spotifyCandidates.length) {
         playTrack(randomChoice(spotifyCandidates), `Artist: ${artist.name}`);

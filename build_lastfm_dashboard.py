@@ -823,7 +823,7 @@ def _apply_seed_fields(target: dict[str, Any], seed: dict[str, Any], fields: tup
 def merge_api_aggregates(
     data: dict[str, Any],
     api_data: dict[str, Any],
-    top_limit: int = 20,
+    top_limit: int = 50,
     recent_limit: int = 40,
 ) -> None:
     if not isinstance(api_data, dict):

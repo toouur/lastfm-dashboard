@@ -46,6 +46,13 @@ jobs:
           python -m pip install --upgrade pip
           pip install requests beautifulsoup4
 
+      - name: Validate required secrets
+        run: |
+          if [ -z "$LASTFM_API_KEY" ]; then
+            echo "LASTFM_API_KEY is missing. Add it in Settings -> Secrets and variables -> Actions."
+            exit 1
+          fi
+
       - name: Sync Last.fm API cache (incremental)
         run: |
           python sync_lastfm_api.py \
