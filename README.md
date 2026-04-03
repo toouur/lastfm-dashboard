@@ -53,6 +53,8 @@ It also writes:
 - `raw_snapshot/all_scrobbles_api.json` (full normalized searchable scrobbles export)
 - `raw_snapshot/scrobbles_diff.json` (diff report vs existing export when `--compare-with` is set)
 
+In GitHub Actions, incremental state is persisted with `actions/cache` (the runner filesystem is ephemeral).
+
 If you have an export such as `lastfmstats-TOOUUR.json` (or `recenttracks-*.json`), it can be used as a bootstrap dataset on the first run:
 
 ```bash

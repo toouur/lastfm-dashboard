@@ -36,6 +36,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Restore Last.fm sync cache
+        id: lastfm_cache_restore
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            raw_snapshot/api_scrobbles_cache.json
+            raw_snapshot/api_aggregates.json
+            raw_snapshot/all_scrobbles_api.json
+            raw_snapshot/scrobbles_diff.json
+          key: lastfm-sync-${{ runner.os }}-${{ github.ref_name }}-${{ github.run_id }}
+          restore-keys: |
+            lastfm-sync-${{ runner.os }}-${{ github.ref_name }}-
+
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
@@ -60,11 +73,20 @@ jobs:
             --cache raw_snapshot/api_scrobbles_cache.json \
             --aggregates raw_snapshot/api_aggregates.json \
             --full-export raw_snapshot/all_scrobbles_api.json \
-            --compare-with lastfmstats-TOOUUR.json \
-            --diff-output raw_snapshot/scrobbles_diff.json \
-            --seed-export lastfmstats-TOOUUR.json \
+            --seed-export raw_snapshot/all_scrobbles_api.json \
             --lookback-hours 72 \
             --delay-ms 120
+
+      - name: Save Last.fm sync cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            raw_snapshot/api_scrobbles_cache.json
+            raw_snapshot/api_aggregates.json
+            raw_snapshot/all_scrobbles_api.json
+            raw_snapshot/scrobbles_diff.json
+          key: lastfm-sync-${{ runner.os }}-${{ github.ref_name }}-${{ github.run_id }}
 
       - name: Build dashboard
         run: |
