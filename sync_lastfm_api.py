@@ -310,6 +310,163 @@ def load_cache(path: Path, username: str) -> dict[str, Any]:
     }
 
 
+def parse_uts(value: Any) -> int:
+    if isinstance(value, (int, float)):
+        uts = int(value)
+    elif isinstance(value, str):
+        s = value.strip()
+        if not s:
+            return 0
+        if s.isdigit():
+            uts = int(s)
+        else:
+            try:
+                uts = int(dt.datetime.fromisoformat(s.replace("Z", "+00:00")).timestamp())
+            except ValueError:
+                return 0
+    elif isinstance(value, dict):
+        if "uts" in value:
+            return parse_uts(value.get("uts"))
+        return 0
+    else:
+        return 0
+
+    # Handle millisecond timestamps.
+    if uts > 10_000_000_000:
+        uts //= 1000
+    return uts if uts > 0 else 0
+
+
+def _extract_seed_rows(payload: Any) -> list[dict[str, Any]]:
+    if isinstance(payload, list):
+        return [item for item in payload if isinstance(item, dict)]
+
+    if not isinstance(payload, dict):
+        return []
+
+    if isinstance(payload.get("recenttracks"), dict):
+        tracks = payload["recenttracks"].get("track")
+        if isinstance(tracks, dict):
+            return [tracks]
+        if isinstance(tracks, list):
+            return [item for item in tracks if isinstance(item, dict)]
+
+    for key in ("scrobbles", "recent_tracks", "tracks", "items", "data"):
+        rows = payload.get(key)
+        if isinstance(rows, list):
+            return [item for item in rows if isinstance(item, dict)]
+
+    for value in payload.values():
+        if isinstance(value, list) and value and isinstance(value[0], dict):
+            return [item for item in value if isinstance(item, dict)]
+        if isinstance(value, dict):
+            nested = _extract_seed_rows(value)
+            if nested:
+                return nested
+
+    return []
+
+
+def normalize_seed_scrobble(raw: dict[str, Any]) -> dict[str, Any] | None:
+    if not isinstance(raw, dict):
+        return None
+
+    attr = raw.get("@attr") if isinstance(raw.get("@attr"), dict) else {}
+    if str(attr.get("nowplaying") or "").lower() == "true":
+        return None
+
+    track_obj = raw.get("track") if isinstance(raw.get("track"), dict) else {}
+    date_obj = raw.get("date") if isinstance(raw.get("date"), dict) else {}
+
+    uts = 0
+    for candidate in (
+        raw.get("uts"),
+        raw.get("timestamp"),
+        raw.get("time"),
+        raw.get("played_at"),
+        raw.get("date_uts"),
+        date_obj.get("uts"),
+        raw.get("date"),
+    ):
+        uts = parse_uts(candidate)
+        if uts:
+            break
+    if not uts:
+        return None
+
+    track = _field_text(raw.get("name") or raw.get("track_name") or raw.get("title") or raw.get("track"))
+    if not track:
+        track = _field_text(track_obj.get("name") or track_obj.get("title"))
+    artist = _field_text(raw.get("artist_name") or raw.get("artist") or raw.get("artistName"))
+    if not artist:
+        artist = _field_text(track_obj.get("artist"))
+    album = _field_text(raw.get("album_name") or raw.get("album") or raw.get("albumName"))
+    if not album:
+        album = _field_text(track_obj.get("album"))
+    if not track:
+        return None
+
+    track_url = str(
+        raw.get("track_url")
+        or raw.get("url")
+        or raw.get("lastfm_url")
+        or raw.get("lastfmUrl")
+        or track_obj.get("url")
+        or ""
+    ).strip()
+    if track_url.startswith("/"):
+        track_url = "https://www.last.fm" + track_url
+    if not track_url:
+        track_url = _lastfm_music_url(artist, track)
+
+    return {
+        "uts": uts,
+        "track": track,
+        "artist": artist,
+        "album": album,
+        "track_url": track_url,
+    }
+
+
+def load_seed_scrobbles(path: Path) -> list[dict[str, Any]]:
+    if not path.exists():
+        log.warning("Seed export file not found: %s", path)
+        return []
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        log.warning("Could not read seed export %s: %s", path, exc)
+        return []
+
+    rows = _extract_seed_rows(payload)
+    normalized: list[dict[str, Any]] = []
+    for row in rows:
+        item = normalize_seed_scrobble(row)
+        if item:
+            normalized.append(item)
+
+    normalized.sort(key=lambda x: parse_int(x.get("uts"), 0), reverse=True)
+    log.info(
+        "Loaded seed export %s: raw_rows=%d normalized_scrobbles=%d",
+        path,
+        len(rows),
+        len(normalized),
+    )
+    return normalized
+
+
+def discover_seed_export(username: str, root: Path) -> Path | None:
+    lower_user = username.lower()
+    candidates = sorted(root.glob("recenttracks-*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+    if not candidates:
+        return None
+
+    for path in candidates:
+        if lower_user in path.name.lower():
+            return path
+    return candidates[0]
+
+
 def merge_scrobbles(
     existing: list[dict[str, Any]],
     incoming: list[dict[str, Any]],
@@ -516,39 +673,75 @@ def main() -> None:
     parser.add_argument("--max-pages", type=int, default=0, help="Max pages per run (0 = all pages)")
     parser.add_argument("--delay-ms", type=int, default=120, help="Delay between page requests in milliseconds")
     parser.add_argument("--timeout", type=int, default=30, help="HTTP timeout in seconds")
+    parser.add_argument(
+        "--seed-export",
+        default="",
+        help="Optional seed JSON export path (used when cache is empty)",
+    )
+    parser.add_argument(
+        "--skip-seed-export",
+        action="store_true",
+        help="Do not import seed export even when cache is empty",
+    )
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable debug logging")
     args = parser.parse_args()
 
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
 
-    api_key = os.environ.get("LASTFM_API_KEY", "").strip()
-    if not api_key:
-        log.warning("LASTFM_API_KEY is not set. Skipping API sync.")
-        return
-
     cache_path = Path(args.cache)
     aggregates_path = Path(args.aggregates)
-
     cache = load_cache(cache_path, args.user)
+    seed_added = 0
+
+    if not args.skip_seed_export and not cache.get("scrobbles"):
+        seed_path: Path | None
+        if args.seed_export:
+            seed_path = Path(args.seed_export)
+        else:
+            seed_path = discover_seed_export(args.user, Path.cwd())
+
+        if seed_path:
+            seed_rows = load_seed_scrobbles(seed_path)
+            if seed_rows:
+                merged_seed, seed_stats = merge_scrobbles(cache.get("scrobbles", []), seed_rows)
+                cache["scrobbles"] = merged_seed
+                cache["last_synced_uts"] = max((parse_int(row.get("uts"), 0) for row in merged_seed), default=0)
+                seed_added = seed_stats["added"]
+                log.info("Seed import applied: +%d scrobbles from %s", seed_added, seed_path)
+        elif args.seed_export:
+            log.warning("Configured seed export does not exist: %s", args.seed_export)
+
+    api_key = os.environ.get("LASTFM_API_KEY", "").strip()
+    incoming: list[dict[str, Any]] = []
+    pages = 0
+
     last_synced = parse_int(cache.get("last_synced_uts"), 0)
     overlap = max(0, args.lookback_hours) * 3600
     from_uts = max(0, last_synced - overlap) if last_synced else 0
 
-    if last_synced:
-        log.info("Incremental sync from uts=%d (last_synced=%d, overlap=%dh)", from_uts, last_synced, args.lookback_hours)
-    else:
-        log.info("No existing cache found. Performing initial bootstrap sync.")
+    if api_key:
+        if last_synced:
+            log.info(
+                "Incremental sync from uts=%d (last_synced=%d, overlap=%dh)",
+                from_uts,
+                last_synced,
+                args.lookback_hours,
+            )
+        else:
+            log.info("No existing cache found. Performing initial API bootstrap sync.")
 
-    incoming, pages = fetch_recent_tracks_incremental(
-        username=args.user,
-        api_key=api_key,
-        from_uts=from_uts,
-        limit=args.limit,
-        max_pages=args.max_pages,
-        delay_ms=args.delay_ms,
-        timeout=args.timeout,
-    )
+        incoming, pages = fetch_recent_tracks_incremental(
+            username=args.user,
+            api_key=api_key,
+            from_uts=from_uts,
+            limit=args.limit,
+            max_pages=args.max_pages,
+            delay_ms=args.delay_ms,
+            timeout=args.timeout,
+        )
+    else:
+        log.warning("LASTFM_API_KEY is not set. API fetch skipped; using cached/seed data only.")
 
     merged, merge_stats = merge_scrobbles(cache.get("scrobbles", []), incoming)
     last_synced_uts = max((parse_int(row.get("uts"), 0) for row in merged), default=0)
@@ -564,7 +757,9 @@ def main() -> None:
     aggregates = build_aggregates(merged, top_limit=50, recent_limit=40)
     aggregates["sync"] = {
         "pages_fetched": pages,
+        "api_fetch_enabled": bool(api_key),
         "fetched_scrobbles": len(incoming),
+        "seed_imported_scrobbles": seed_added,
         "added_scrobbles": merge_stats["added"],
         "updated_scrobbles": merge_stats["updated"],
         "cache_size": len(merged),
